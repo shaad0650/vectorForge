@@ -1,0 +1,29 @@
+name: quick_test
+dataset:
+  path: data/collections/itest_bench.npz
+queries:
+  path: data/collections/itest_queries.jsonl
+  limit: 10
+methods:
+  - exact
+  - hnsw
+  - bm25
+  - hybrid
+retrieval:
+  top_k: [5, 10]
+hnsw:
+  M: 16
+  ef_construction: 100
+  ef_search: 50
+embeddings:
+  allow_fallback: true
+measurement:
+  warmup_queries: 2
+  measurement_queries: 10
+sweep:
+  hnsw:
+    M: [8, 16]
+    ef_construction: [100, 200]
+    ef_search: [50, 100]
+  hybrid:
+    alpha: [0.25, 0.5]
