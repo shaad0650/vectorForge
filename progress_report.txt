@@ -1,0 +1,116 @@
+    VectorForge Progress Report
+    Date: 2026-09-22
+
+    Summary
+    -------
+    This report describes current progress on VectorForge (modular vector search and retrieval) focused on benchmarking. It summarizes implemented components, completed experiments, and concrete next steps (experiments, reproducibility, validation).
+
+    Important: do not add reranking yet — focus analysis on retrieval baselines and parameter sweeps first.
+
+    Completed Work (condensed)
+    --------------------------
+    - Retrievers: Exact (brute-force), HNSW wrapper (`hnswlib` optional), BM25, and Hybrid (lexical + dense fusion).
+    - Persistence: ingestion CLI writing `data/collections/*.npz`, collection registry, guarded SQLite metadata.
+    - Embeddings: `EmbeddingProvider` (real model via `sentence-transformers` or deterministic fallback for tests). `sentence-transformers` installed and verified locally.
+    - Benchmarking: `vectorforge/benchmark/` package (config, dataset, evaluator, writer, monitor, runner) plus CLI and helper scripts for runs, aggregation, plotting, and scale orchestration.
+
+    Controlled experiments to run (design)
+    -------------------------------------
+    We will convert the quick observations into three formal experiments with controlled variables and repeat runs for stability.
+
+    Experiment A — Exact vs HNSW
+    - Goal: measure efficiency gained by ANN and its effect on retrieval quality.
+    - Compare: `exact` vs `hnsw` (select representative `M` values).
+    - Metrics: Recall@1/5/10, MRR, nDCG@10, p50/p95/p99 latencies, QPS, RSS, index-build time.
+    - Key plot: Recall@10 vs p95 latency (each method/config as a point/curve).
+
+    Experiment B — HNSW parameter sensitivity
+    - Goal: quantify trade-offs for `M` and `ef_search` with other vars controlled.
+    - Sweep example: `M ∈ {8,16,32}`, `ef_search ∈ {50,100,200}`, fixed `ef_construction` (or small grid).
+    - Metrics: same as Experiment A. Produce heatmaps and Recall@10 vs p95 curves.
+
+    Experiment C — Dense vs BM25 vs Hybrid
+    - Goal: measure quality gains from combining lexical + dense retrieval and cost of fusion.
+    - Configs: `bm25`, `dense` (exact or hnsw), `hybrid` with `alpha ∈ {0.25,0.5,0.75}`.
+    - Metrics: Recall@10, MRR, nDCG@10, p95 latency, QPS. Plot quality vs latency.
+
+    Scale dimension (10K / 50K / 100K)
+    ---------------------------------
+    - Run Experiments A–C at each scale to observe how exact and HNSW scaling behaviors differ (not just that larger = slower). Focus on how p95 and index-build time scale and how recall degrades or remains stable.
+
+    Reproducibility & result schema (next engineering task)
+    -----------------------------------------------------
+    Every experiment artifact should include a compact provenance header. Proposed fields to store with each `experiment_id`:
+
+     - `experiment_id`
+     - `timestamp`
+     - `git_commit`
+     - `dataset` (path)
+     - `dataset_hash` (e.g., sha256 of the .npz)
+     - `query_set` (path + hash)
+     - `embedding_model` (model name + weights sha/identifier)
+     - `embedding_dimension`
+     - `top_k`
+     - `random_seed`
+     - `method`
+     - `M`, `ef_construction`, `ef_search` (when applicable)
+     - `alpha` (hybrid)
+     - `warmup_queries`, `measurement_queries`
+     - `index_build_time_s`
+     - `mean_latency_ms`, `p50_ms`, `p95_ms`, `p99_ms`
+     - `QPS`
+     - `RSS_bytes`
+
+    Include `results/pip_freeze.txt` and a short `hardware.txt` (CPU model, RAM) alongside the JSON outputs.
+
+    Benchmark tests (minimal focused suite)
+    --------------------------------------
+    Add a small test module exercising benchmark logic (use tiny synthetic datasets and mocks):
+
+     - warmup exclusion: ensure warmup queries are not counted in measurement stats
+     - QPS calculation correctness
+     - percentile computation (p50/p95/p99)
+     - sweep expansion correctness
+     - aggregation/CSV writer correctness
+     - optional dependency handling (`hnswlib`, `psutil`) and fallback behavior
+     - `EmbeddingProvider` rejects fallback when `allow_fallback=false`
+
+    These tests should be lightweight and deterministic.
+
+    Outstanding Items / Next Steps (revised)
+    ---------------------------------------
+    1. Experimental validation
+     - Run the three controlled experiments (A,B,C) with repeat runs to estimate variance.
+     - Produce the primary plots: Recall@10 vs p95, Recall@10 vs RSS, ef_search vs Recall.
+    2. Reproducibility
+     - Implement the result provenance header and save `pip_freeze.txt`, dataset/query hashes, and `git_commit` for every experiment.
+    3. Benchmark validation
+     - Add the focused benchmark test suite described above.
+    4. Analysis & visualization
+     - Improve `plot_results.py` to create publication-ready figures (error bars, labeled curves); export CSVs used for plotting.
+    5. Optional extension (deferred)
+     - Add reranking only after the retrieval baselines and parameter sweeps are validated and reported.
+
+    Files added during this phase
+    ----------------------------
+     - `vectorforge/scripts/run_experiments.py` — orchestrator for baseline + sweep + dense/hybrid runs.
+     - `vectorforge/scripts/aggregate_results.py` — consolidates JSON results into `results/consolidated_results.csv`.
+     - `vectorforge/scripts/plot_results.py` — quick plotting; extend for publication-quality charts.
+     - `vectorforge/scripts/scale_experiments.py` — runs scale experiments for 10k/50k/100k datasets.
+
+    Reproducibility: how to re-run
+    -----------------------------
+    1. Generate test collection and queries:
+         - `python -m vectorforge.scripts.generate_sample_collection`
+    2. Install optional dependencies if desired:
+         - `pip install psutil hnswlib` (Windows: prefer conda for `hnswlib` if build tools are missing)
+    3. Run one of the orchestrators:
+         - Baseline + sweeps: `python -m vectorforge.scripts.run_experiments`
+         - Scale runs: `python -m vectorforge.scripts.scale_experiments`
+    4. Aggregate & plot:
+         - `python -m vectorforge.scripts.aggregate_results`
+         - `python -m vectorforge.scripts.plot_results` (requires `pandas` and `matplotlib`)
+    5. Capture environment:
+         - `python -m pip freeze > results/pip_freeze.txt`
+
+    Prepared by: GitHub Copilot (assistant)
